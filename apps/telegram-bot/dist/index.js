@@ -1,0 +1,510 @@
+"use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.bot = void 0;
+const telegraf_1 = require("telegraf");
+const dotenv_1 = __importDefault(require("dotenv"));
+const axios_1 = __importDefault(require("axios"));
+dotenv_1.default.config();
+const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '';
+const API_URL = process.env.BACKEND_API_URL || 'http://localhost:5000/api';
+const MINI_APP_URL = process.env.TELEGRAM_MINI_APP_URL || 'http://localhost:3000/store';
+if (!BOT_TOKEN) {
+    console.warn('⚠️ [TelegramBot] TELEGRAM_BOT_TOKEN is not configured in .env. Bot will run in offline standby mode.');
+}
+exports.bot = new telegraf_1.Telegraf(BOT_TOKEN || '0000000000:AAFakeBotTokenForStandbyModeOnly123456');
+// Global error handler to prevent crashing
+exports.bot.catch((err, ctx) => {
+    console.error(`⚠️ [TelegramBot] Error while handling update ${ctx.update?.update_id}:`, err.message || err);
+});
+// Helper to check if URL is a valid public HTTPS endpoint for Telegram
+function isPublicHttpsUrl(url) {
+    if (!url)
+        return false;
+    try {
+        const parsed = new URL(url);
+        return (parsed.protocol === 'https:' &&
+            parsed.hostname !== 'localhost' &&
+            parsed.hostname !== '127.0.0.1' &&
+            !parsed.hostname.endsWith('.local'));
+    }
+    catch {
+        return false;
+    }
+}
+// Helper to create store button safely (Telegram rejects localhost and non-HTTPS URLs in buttons)
+function getStoreButton(label, customUrl) {
+    const url = customUrl || MINI_APP_URL;
+    if (isPublicHttpsUrl(url)) {
+        return telegraf_1.Markup.button.webApp(label, url);
+    }
+    // When running on localhost or non-https, use a safe callback button to prevent Telegram 400 Bad Request
+    return telegraf_1.Markup.button.callback(label, 'cmd_open_store_info');
+}
+// Helper to interact with backend
+const api = axios_1.default.create({
+    baseURL: API_URL,
+    timeout: 10000
+});
+// Helper for bot auth headers
+function getTgHeader(telegramId) {
+    return {
+        headers: {
+            'x-telegram-id': telegramId.toString()
+        }
+    };
+}
+const userCarts = new Map();
+// 1. Welcome & Registration
+exports.bot.command('start', async (ctx) => {
+    const telegramId = ctx.from.id;
+    const username = ctx.from.username;
+    const firstName = ctx.from.first_name;
+    const lastName = ctx.from.last_name;
+    // Check referral parameter (e.g. /start ref_123456)
+    const text = ctx.message.text || '';
+    const match = text.match(/ref_(\d+)/);
+    const referredBy = match ? parseInt(match[1], 10) : undefined;
+    try {
+        // Register or sync user with backend
+        await api.get('/users/profile', getTgHeader(telegramId));
+    }
+    catch (e) {
+        // Backend may auto-create via x-telegram-id header
+    }
+    const welcomeText = `✨ *Welcome to Telegram Digital Store Pro!* ✨\n\n` +
+        `Hello *${firstName}*! We provide premium digital products with instant delivery and *Bakong KHQR* automated payments.\n\n` +
+        `🚀 *Features:*\n` +
+        `• Instant license keys & activation codes\n` +
+        `• Secure digital eBooks & software downloads\n` +
+        `• Instant automated delivery after scan\n` +
+        `• 24/7 automated KHQR payment verification\n\n` +
+        `Tap the buttons below to browse categories, manage your cart, or view past purchases!`;
+    await ctx.replyWithMarkdown(welcomeText, telegraf_1.Markup.inlineKeyboard([
+        [getStoreButton('🛍️ Open Store (Mini App)', MINI_APP_URL)],
+        [
+            telegraf_1.Markup.button.callback('📂 Browse Categories', 'cmd_categories'),
+            telegraf_1.Markup.button.callback('🔍 Search Catalog', 'cmd_categories')
+        ],
+        [
+            telegraf_1.Markup.button.callback('🛒 My Cart', 'cmd_cart'),
+            telegraf_1.Markup.button.callback('📦 My Orders', 'cmd_orders')
+        ],
+        [
+            telegraf_1.Markup.button.callback('🎁 Referral Program', 'cmd_referral'),
+            telegraf_1.Markup.button.callback('💬 Customer Support', 'cmd_support')
+        ]
+    ]));
+});
+// Mini App Info Callback (for localhost development guidance)
+exports.bot.action('cmd_open_store_info', async (ctx) => {
+    await ctx.answerCbQuery();
+    const isHttps = isPublicHttpsUrl(MINI_APP_URL);
+    let text = `🌐 *Storefront Access:*\n\n`;
+    if (isHttps) {
+        text += `Mini App URL: ${MINI_APP_URL}\n`;
+    }
+    else {
+        text += `Your store is currently running locally at: \`${MINI_APP_URL}\`\n\n`;
+        text += `💡 *Tip for Telegram Mini App:* Telegram requires a public HTTPS URL (e.g. via ngrok or production domain) to embed the Web App directly in Telegram buttons.\n\n`;
+        text += `✨ You can browse all products, add items to cart, and pay with KHQR directly right here in the bot! 👇`;
+    }
+    await ctx.replyWithMarkdown(text, telegraf_1.Markup.inlineKeyboard([
+        [telegraf_1.Markup.button.callback('📂 Browse Categories', 'cmd_categories')],
+        [telegraf_1.Markup.button.callback('🛒 View Cart', 'cmd_cart')]
+    ]));
+});
+// 2. Categories
+exports.bot.action('cmd_categories', async (ctx) => {
+    try {
+        await ctx.answerCbQuery();
+        const res = await api.get('/categories');
+        const categories = res.data.categories || [];
+        if (categories.length === 0) {
+            await ctx.reply('No categories found.');
+            return;
+        }
+        const buttons = categories.map((cat) => [
+            telegraf_1.Markup.button.callback(`📁 ${cat.name}`, `cat_${cat.slug}`)
+        ]);
+        buttons.push([telegraf_1.Markup.button.callback('🔙 Back to Main Menu', 'cmd_menu')]);
+        await ctx.reply('*Select a Category:*', {
+            parse_mode: 'Markdown',
+            ...telegraf_1.Markup.inlineKeyboard(buttons)
+        });
+    }
+    catch (err) {
+        await ctx.reply('⚠️ Error loading categories: ' + (err.message || 'Server error'));
+    }
+});
+// Category products action
+exports.bot.action(/cat_(.+)/, async (ctx) => {
+    try {
+        await ctx.answerCbQuery();
+        const slug = ctx.match[1];
+        const res = await api.get(`/products?category=${slug}`);
+        const products = res.data.products || [];
+        if (products.length === 0) {
+            await ctx.reply('No products found in this category.', telegraf_1.Markup.inlineKeyboard([
+                [telegraf_1.Markup.button.callback('🔙 Back to Categories', 'cmd_categories')]
+            ]));
+            return;
+        }
+        const buttons = products.map((prod) => [
+            telegraf_1.Markup.button.callback(`🔹 ${prod.name} - $${prod.discountPriceUSD || prod.priceUSD}`, `prod_${prod._id}`)
+        ]);
+        buttons.push([telegraf_1.Markup.button.callback('🔙 Back to Categories', 'cmd_categories')]);
+        await ctx.reply(`*Products in Category:*`, {
+            parse_mode: 'Markdown',
+            ...telegraf_1.Markup.inlineKeyboard(buttons)
+        });
+    }
+    catch (err) {
+        await ctx.reply('⚠️ Error loading products: ' + err.message);
+    }
+});
+// 3. Product Details
+exports.bot.action(/prod_(.+)/, async (ctx) => {
+    try {
+        await ctx.answerCbQuery();
+        const prodId = ctx.match[1];
+        const res = await api.get(`/products/${prodId}`);
+        const prod = res.data.product;
+        if (!prod) {
+            await ctx.reply('Product not found.');
+            return;
+        }
+        const priceUSD = prod.discountPriceUSD ?? prod.priceUSD;
+        const priceKHR = prod.discountPriceKHR ?? prod.priceKHR;
+        let msg = `🛍️ *${prod.name}*\n\n`;
+        msg += `📝 ${prod.shortDescription || prod.description}\n\n`;
+        msg += `💵 *Price:* $${priceUSD.toFixed(2)} (${priceKHR.toLocaleString()} ៛)\n`;
+        if (prod.discountPriceUSD) {
+            msg += `🏷️ *Original:* ~$${prod.priceUSD.toFixed(2)}~\n`;
+        }
+        msg += `📦 *Type:* \`${prod.productType}\`\n`;
+        msg += `⚡ *Delivery:* \`${prod.deliveryMethod}\`\n`;
+        msg += `📊 *Stock:* ${prod.isUnlimitedStock ? 'Unlimited' : prod.stockQuantity + ' available'}\n`;
+        const buttons = [
+            [
+                telegraf_1.Markup.button.callback('🛒 Add to Cart', `add_cart_${prod._id}`),
+                telegraf_1.Markup.button.callback('⚡ Instant Buy', `buy_instant_${prod._id}`)
+            ],
+            [getStoreButton('🌐 View in Mini App', MINI_APP_URL)],
+            [telegraf_1.Markup.button.callback('🔙 Categories', 'cmd_categories')]
+        ];
+        if (prod.images && prod.images.length > 0 && prod.images[0].startsWith('http')) {
+            await ctx.replyWithPhoto(prod.images[0], {
+                caption: msg,
+                parse_mode: 'Markdown',
+                ...telegraf_1.Markup.inlineKeyboard(buttons)
+            });
+        }
+        else {
+            await ctx.replyWithMarkdown(msg, telegraf_1.Markup.inlineKeyboard(buttons));
+        }
+    }
+    catch (err) {
+        await ctx.reply('⚠️ Error loading product details: ' + err.message);
+    }
+});
+// 4. Add to Cart & Instant Buy
+exports.bot.action(/add_cart_(.+)/, async (ctx) => {
+    try {
+        await ctx.answerCbQuery('Added to cart!');
+        const prodId = ctx.match[1];
+        const telegramId = ctx.from.id;
+        const res = await api.get(`/products/${prodId}`);
+        const prod = res.data.product;
+        const cart = userCarts.get(telegramId) || [];
+        const existing = cart.find((i) => i.productId === prodId);
+        if (existing) {
+            existing.quantity += 1;
+        }
+        else {
+            cart.push({
+                productId: prod._id,
+                name: prod.name,
+                priceUSD: prod.discountPriceUSD ?? prod.priceUSD,
+                quantity: 1
+            });
+        }
+        userCarts.set(telegramId, cart);
+        await ctx.reply(`✅ Added *${prod.name}* to your cart!`, telegraf_1.Markup.inlineKeyboard([
+            [telegraf_1.Markup.button.callback('🛒 View Cart & Checkout', 'cmd_cart')],
+            [telegraf_1.Markup.button.callback('➕ Continue Shopping', 'cmd_categories')]
+        ]));
+    }
+    catch (err) {
+        await ctx.reply('Error adding to cart: ' + err.message);
+    }
+});
+// 5. Shopping Cart & Checkout
+exports.bot.action('cmd_cart', async (ctx) => {
+    await showCart(ctx);
+});
+exports.bot.command('cart', async (ctx) => {
+    await showCart(ctx);
+});
+async function showCart(ctx) {
+    const telegramId = ctx.from.id;
+    const cart = userCarts.get(telegramId) || [];
+    if (cart.length === 0) {
+        await ctx.reply('🛒 Your cart is currently empty.', telegraf_1.Markup.inlineKeyboard([
+            [telegraf_1.Markup.button.callback('🛍️ Browse Products', 'cmd_categories')],
+            [getStoreButton('📱 Open Mini App Store', MINI_APP_URL)]
+        ]));
+        return;
+    }
+    let totalUSD = 0;
+    let text = `🛒 *Your Shopping Cart:*\n\n`;
+    cart.forEach((item, index) => {
+        const subtotal = item.priceUSD * item.quantity;
+        totalUSD += subtotal;
+        text += `${index + 1}. *${item.name}*\n   Qty: ${item.quantity} × $${item.priceUSD.toFixed(2)} = *$${subtotal.toFixed(2)}*\n`;
+    });
+    text += `\n━━━━━━━━━━━━━━━━━━━━\n`;
+    text += `💰 *Total Amount:* *$${totalUSD.toFixed(2)}* (~${Math.round(totalUSD * 4100).toLocaleString()} ៛)\n`;
+    await ctx.replyWithMarkdown(text, telegraf_1.Markup.inlineKeyboard([
+        [telegraf_1.Markup.button.callback('💳 Checkout with KHQR', 'cmd_checkout')],
+        [telegraf_1.Markup.button.callback('🗑️ Clear Cart', 'cmd_clear_cart')],
+        [telegraf_1.Markup.button.callback('🔙 Categories', 'cmd_categories')]
+    ]));
+}
+exports.bot.action('cmd_clear_cart', async (ctx) => {
+    await ctx.answerCbQuery('Cart cleared');
+    userCarts.delete(ctx.from.id);
+    await ctx.reply('🛒 Your cart has been emptied.');
+});
+// 6. Checkout & KHQR Payment
+exports.bot.action(['cmd_checkout', /buy_instant_(.+)/], async (ctx) => {
+    try {
+        await ctx.answerCbQuery();
+        const telegramId = ctx.from.id;
+        let itemsToOrder = [];
+        if (ctx.match && ctx.match[0].startsWith('buy_instant_')) {
+            const prodId = ctx.match[1];
+            itemsToOrder.push({ productId: prodId, quantity: 1 });
+        }
+        else {
+            const cart = userCarts.get(telegramId) || [];
+            if (cart.length === 0) {
+                await ctx.reply('Your cart is empty.');
+                return;
+            }
+            itemsToOrder = cart.map((i) => ({ productId: i.productId, quantity: i.quantity }));
+        }
+        await ctx.reply('⏳ Creating your order and generating dynamic Bakong KHQR...');
+        const res = await api.post('/orders', {
+            items: itemsToOrder,
+            currency: 'USD'
+        }, getTgHeader(telegramId));
+        const { order, payment } = res.data;
+        // Clear cart on successful order creation
+        userCarts.delete(telegramId);
+        let payMsg = `💳 *Bakong KHQR Payment Request*\n\n`;
+        payMsg += `📦 *Order:* \`${order.orderNumber}\`\n`;
+        payMsg += `💵 *Amount:* *$${order.payableAmount.toFixed(2)}* USD\n`;
+        payMsg += `⏱️ *Expires in:* 15 minutes\n\n`;
+        payMsg += `📲 *How to pay:*\n`;
+        payMsg += `1. Save the QR code image below.\n`;
+        payMsg += `2. Open any Cambodian banking app (Bakong, ABA, Wing, ACLEDA, etc.).\n`;
+        payMsg += `3. Scan and confirm payment.\n\n`;
+        payMsg += `⚡ Your digital products will be delivered here instantly upon confirmation!`;
+        // Convert data URL base64 image into buffer to send as Telegram Photo
+        const base64Data = payment.qrImageDataUrl.replace(/^data:image\/png;base64,/, '');
+        const imgBuffer = Buffer.from(base64Data, 'base64');
+        await ctx.replyWithPhoto({ source: imgBuffer }, {
+            caption: payMsg,
+            parse_mode: 'Markdown',
+            ...telegraf_1.Markup.inlineKeyboard([
+                [telegraf_1.Markup.button.callback('🔄 Check Payment Status', `verify_${payment.transactionRef}`)],
+                [telegraf_1.Markup.button.callback('🧪 [Sandbox] Simulate Scan', `sim_pay_${payment.transactionRef}`)],
+                [getStoreButton('📱 View Order in Store', MINI_APP_URL)]
+            ])
+        });
+    }
+    catch (err) {
+        await ctx.reply('⚠️ Error creating order: ' + (err.response?.data?.message || err.message));
+    }
+});
+// 7. Payment Verification Callback
+exports.bot.action(/verify_(.+)/, async (ctx) => {
+    try {
+        const txnRef = ctx.match[1];
+        await ctx.answerCbQuery('Checking payment status with Bakong...');
+        const res = await api.post(`/payments/verify/${txnRef}`);
+        const isPaid = res.data.success;
+        if (isPaid) {
+            await ctx.reply(`🎉 *Payment Confirmed!* Thank you! Your digital delivery is being processed right now.`);
+        }
+        else {
+            await ctx.reply(`⏳ *Payment Pending:*\n${res.data.verification?.message || 'We have not yet detected your payment on the Bakong network. Please complete the scan in your banking app.'}`, telegraf_1.Markup.inlineKeyboard([
+                [telegraf_1.Markup.button.callback('🔄 Re-check Status', `verify_${txnRef}`)],
+                [telegraf_1.Markup.button.callback('🧪 [Sandbox] Simulate Scan', `sim_pay_${txnRef}`)]
+            ]));
+        }
+    }
+    catch (err) {
+        await ctx.reply('Error verifying payment: ' + (err.response?.data?.message || err.message));
+    }
+});
+// 8. Sandbox Simulation Callback
+exports.bot.action(/sim_pay_(.+)/, async (ctx) => {
+    try {
+        const txnRef = ctx.match[1];
+        await ctx.answerCbQuery('Simulating banking scan...');
+        const res = await api.post(`/payments/sandbox-simulate-approval/${txnRef}`);
+        if (res.data.success) {
+            await ctx.reply('✅ *[Sandbox Simulation]* Payment scan successfully approved and verified! Digital delivery triggered.');
+        }
+        else {
+            await ctx.reply('Simulation failed: ' + res.data.message);
+        }
+    }
+    catch (err) {
+        await ctx.reply('Simulation not available: ' + (err.response?.data?.message || err.message));
+    }
+});
+// 9. My Orders & Downloads
+exports.bot.command('orders', async (ctx) => {
+    await showUserOrders(ctx);
+});
+exports.bot.action('cmd_orders', async (ctx) => {
+    await ctx.answerCbQuery();
+    await showUserOrders(ctx);
+});
+async function showUserOrders(ctx) {
+    try {
+        const telegramId = ctx.from.id;
+        const res = await api.get('/users/orders', getTgHeader(telegramId));
+        const orders = res.data.orders || [];
+        if (orders.length === 0) {
+            await ctx.reply('📦 You have no past orders yet.', telegraf_1.Markup.inlineKeyboard([
+                [telegraf_1.Markup.button.callback('🛍️ Start Shopping', 'cmd_categories')],
+                [getStoreButton('📱 Open Store', MINI_APP_URL)]
+            ]));
+            return;
+        }
+        let text = `📦 *Your Recent Orders:*\n\n`;
+        const buttons = [];
+        orders.slice(0, 10).forEach((ord, idx) => {
+            const statusIcon = ord.status === 'PAID' || ord.status === 'DELIVERED' ? '✅' : ord.status === 'PENDING' ? '⏳' : '❌';
+            text += `${idx + 1}. *${ord.orderNumber}* (${statusIcon} ${ord.status})\n`;
+            text += `   Items: ${ord.items?.length || 1} | Total: $${ord.payableAmount?.toFixed(2) || '0.00'}\n`;
+            buttons.push([telegraf_1.Markup.button.callback(`View ${ord.orderNumber}`, `view_ord_${ord._id}`)]);
+        });
+        buttons.push([getStoreButton('📱 View Full Hub in Store', MINI_APP_URL)]);
+        buttons.push([telegraf_1.Markup.button.callback('🔙 Main Menu', 'cmd_menu')]);
+        await ctx.replyWithMarkdown(text, telegraf_1.Markup.inlineKeyboard(buttons));
+    }
+    catch (err) {
+        await ctx.reply('Error loading orders: ' + err.message);
+    }
+}
+// View specific order & view delivered items
+exports.bot.action(/view_ord_(.+)/, async (ctx) => {
+    try {
+        await ctx.answerCbQuery();
+        const orderId = ctx.match[1];
+        const res = await api.get(`/deliveries/order/${orderId}`);
+        const delivery = res.data.delivery;
+        if (!delivery) {
+            await ctx.reply('Delivery is still pending or payment has not been received.');
+            return;
+        }
+        let text = `🎁 *Digital Delivery for Order:*\n\n`;
+        delivery.items.forEach((item, i) => {
+            text += `*${i + 1}. ${item.productName}*\n`;
+            text += `${item.deliveredContent}\n\n`;
+        });
+        await ctx.replyWithMarkdown(text, telegraf_1.Markup.inlineKeyboard([
+            [telegraf_1.Markup.button.callback('🔙 Back to Orders', 'cmd_orders')]
+        ]));
+    }
+    catch (err) {
+        await ctx.reply('Error viewing delivery details: ' + (err.response?.data?.message || err.message));
+    }
+});
+// 10. Referral System
+exports.bot.command('referral', async (ctx) => {
+    await showReferral(ctx);
+});
+exports.bot.action('cmd_referral', async (ctx) => {
+    await ctx.answerCbQuery();
+    await showReferral(ctx);
+});
+async function showReferral(ctx) {
+    const telegramId = ctx.from.id;
+    try {
+        const res = await api.get('/users/profile', getTgHeader(telegramId));
+        const user = res.data.user;
+        const botUser = ctx.botInfo?.username || 'StoreProKHQRBot';
+        const refLink = `https://t.me/${botUser}?start=ref_${telegramId}`;
+        let msg = `🎁 *Customer Referral Program*\n\n`;
+        msg += `Share your referral link with friends and fellow developers!\n\n`;
+        msg += `🔗 *Your Personal Referral Link:*\n\`${refLink}\`\n\n`;
+        msg += `📊 *Your Referral Stats:*\n`;
+        msg += `• Total Friends Invited: *${user.referralCount || 0}*\n`;
+        msg += `• Total Orders: *${user.totalOrders || 0}*\n\n`;
+        msg += `Spread the word and enjoy exclusive coupons on your future purchases!`;
+        await ctx.replyWithMarkdown(msg, telegraf_1.Markup.inlineKeyboard([
+            [telegraf_1.Markup.button.url('📲 Share Link', `https://t.me/share/url?url=${encodeURIComponent(refLink)}&text=${encodeURIComponent('Check out Telegram Digital Store Pro!')}`)],
+            [telegraf_1.Markup.button.callback('🔙 Main Menu', 'cmd_menu')]
+        ]));
+    }
+    catch (err) {
+        await ctx.reply('Error loading referral info: ' + err.message);
+    }
+}
+// 11. Customer Support
+exports.bot.command('support', async (ctx) => {
+    await showSupport(ctx);
+});
+exports.bot.action('cmd_support', async (ctx) => {
+    await ctx.answerCbQuery();
+    await showSupport(ctx);
+});
+async function showSupport(ctx) {
+    const supportText = `💬 *Customer Support & Assistance*\n\n` +
+        `Need help with a product, payment verification, or license key?\n\n` +
+        `🕒 *Support Hours:* 24/7 Mon - Sun\n` +
+        `👤 *Direct Telegram Contact:* @StoreProSupport\n` +
+        `📢 *Updates Channel:* @StoreProAnnouncements\n\n` +
+        `When contacting support, please have your *Order Number* ready.`;
+    await ctx.replyWithMarkdown(supportText, telegraf_1.Markup.inlineKeyboard([
+        [telegraf_1.Markup.button.url('💬 Contact Support Agent', 'https://t.me/StoreProSupport')],
+        [telegraf_1.Markup.button.callback('🔙 Main Menu', 'cmd_menu')]
+    ]));
+}
+// 12. Main Menu Action
+exports.bot.action('cmd_menu', async (ctx) => {
+    await ctx.answerCbQuery();
+    await ctx.reply('📱 *Main Menu*', telegraf_1.Markup.inlineKeyboard([
+        [getStoreButton('🛍️ Open Store (Mini App)', MINI_APP_URL)],
+        [
+            telegraf_1.Markup.button.callback('📂 Browse Categories', 'cmd_categories'),
+            telegraf_1.Markup.button.callback('🛒 My Cart', 'cmd_cart')
+        ],
+        [
+            telegraf_1.Markup.button.callback('📦 My Orders', 'cmd_orders'),
+            telegraf_1.Markup.button.callback('🎁 Referral', 'cmd_referral')
+        ],
+        [telegraf_1.Markup.button.callback('💬 Support', 'cmd_support')]
+    ]));
+});
+// Launch Bot
+if (process.env.NODE_ENV !== 'test' && BOT_TOKEN && !BOT_TOKEN.startsWith('0000000000')) {
+    exports.bot.launch()
+        .then(() => {
+        console.log('🤖 [TelegramBot] Customer Telegram Bot successfully started and listening for commands.');
+    })
+        .catch((err) => {
+        console.error('❌ [TelegramBot] Failed to launch bot:', err.message);
+    });
+    process.once('SIGINT', () => exports.bot.stop('SIGINT'));
+    process.once('SIGTERM', () => exports.bot.stop('SIGTERM'));
+}
+//# sourceMappingURL=index.js.map

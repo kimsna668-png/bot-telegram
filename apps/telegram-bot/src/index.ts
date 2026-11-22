@@ -14,6 +14,37 @@ if (!BOT_TOKEN) {
 
 export const bot = new Telegraf(BOT_TOKEN || '0000000000:AAFakeBotTokenForStandbyModeOnly123456');
 
+// Global error handler to prevent crashing
+bot.catch((err: any, ctx) => {
+  console.error(`⚠️ [TelegramBot] Error while handling update ${ctx.update?.update_id}:`, err.message || err);
+});
+
+// Helper to check if URL is a valid public HTTPS endpoint for Telegram
+function isPublicHttpsUrl(url: string): boolean {
+  if (!url) return false;
+  try {
+    const parsed = new URL(url);
+    return (
+      parsed.protocol === 'https:' &&
+      parsed.hostname !== 'localhost' &&
+      parsed.hostname !== '127.0.0.1' &&
+      !parsed.hostname.endsWith('.local')
+    );
+  } catch {
+    return false;
+  }
+}
+
+// Helper to create store button safely (Telegram rejects localhost and non-HTTPS URLs in buttons)
+function getStoreButton(label: string, customUrl?: string) {
+  const url = customUrl || MINI_APP_URL;
+  if (isPublicHttpsUrl(url)) {
+    return Markup.button.webApp(label, url);
+  }
+  // When running on localhost or non-https, use a safe callback button to prevent Telegram 400 Bad Request
+  return Markup.button.callback(label, 'cmd_open_store_info');
+}
+
 // Helper to interact with backend
 const api = axios.create({
   baseURL: API_URL,
@@ -65,15 +96,15 @@ bot.command('start', async (ctx) => {
     `• Secure digital eBooks & software downloads\n` +
     `• Instant automated delivery after scan\n` +
     `• 24/7 automated KHQR payment verification\n\n` +
-    `Tap the buttons below to explore our store or open the *Mini App* for a rich shopping experience!`;
+    `Tap the buttons below to browse categories, manage your cart, or view past purchases!`;
 
   await ctx.replyWithMarkdown(
     welcomeText,
     Markup.inlineKeyboard([
-      [Markup.button.webApp('🛍️ Open Store (Mini App)', MINI_APP_URL)],
+      [getStoreButton('🛍️ Open Store (Mini App)', MINI_APP_URL)],
       [
         Markup.button.callback('📂 Browse Categories', 'cmd_categories'),
-        Markup.button.callback('🔍 Search Products', 'cmd_search_prompt')
+        Markup.button.callback('🔍 Search Catalog', 'cmd_categories')
       ],
       [
         Markup.button.callback('🛒 My Cart', 'cmd_cart'),
@@ -83,6 +114,28 @@ bot.command('start', async (ctx) => {
         Markup.button.callback('🎁 Referral Program', 'cmd_referral'),
         Markup.button.callback('💬 Customer Support', 'cmd_support')
       ]
+    ])
+  );
+});
+
+// Mini App Info Callback (for localhost development guidance)
+bot.action('cmd_open_store_info', async (ctx) => {
+  await ctx.answerCbQuery();
+  const isHttps = isPublicHttpsUrl(MINI_APP_URL);
+  let text = `🌐 *Storefront Access:*\n\n`;
+  if (isHttps) {
+    text += `Mini App URL: ${MINI_APP_URL}\n`;
+  } else {
+    text += `Your store is currently running locally at: \`${MINI_APP_URL}\`\n\n`;
+    text += `💡 *Tip for Telegram Mini App:* Telegram requires a public HTTPS URL (e.g. via ngrok or production domain) to embed the Web App directly in Telegram buttons.\n\n`;
+    text += `✨ You can browse all products, add items to cart, and pay with KHQR directly right here in the bot! 👇`;
+  }
+
+  await ctx.replyWithMarkdown(
+    text,
+    Markup.inlineKeyboard([
+      [Markup.button.callback('📂 Browse Categories', 'cmd_categories')],
+      [Markup.button.callback('🛒 View Cart', 'cmd_cart')]
     ])
   );
 });
@@ -173,7 +226,7 @@ bot.action(/prod_(.+)/, async (ctx) => {
         Markup.button.callback('🛒 Add to Cart', `add_cart_${prod._id}`),
         Markup.button.callback('⚡ Instant Buy', `buy_instant_${prod._id}`)
       ],
-      [Markup.button.webApp('🌐 View in Mini App', `${MINI_APP_URL}`)],
+      [getStoreButton('🌐 View in Mini App', MINI_APP_URL)],
       [Markup.button.callback('🔙 Categories', 'cmd_categories')]
     ];
 
@@ -245,7 +298,7 @@ async function showCart(ctx: any) {
       '🛒 Your cart is currently empty.',
       Markup.inlineKeyboard([
         [Markup.button.callback('🛍️ Browse Products', 'cmd_categories')],
-        [Markup.button.webApp('📱 Open Mini App Store', MINI_APP_URL)]
+        [getStoreButton('📱 Open Mini App Store', MINI_APP_URL)]
       ])
     );
     return;
@@ -336,7 +389,7 @@ bot.action(['cmd_checkout', /buy_instant_(.+)/], async (ctx) => {
         ...Markup.inlineKeyboard([
           [Markup.button.callback('🔄 Check Payment Status', `verify_${payment.transactionRef}`)],
           [Markup.button.callback('🧪 [Sandbox] Simulate Scan', `sim_pay_${payment.transactionRef}`)],
-          [Markup.button.webApp('📱 View Order in Mini App', `${MINI_APP_URL}`)]
+          [getStoreButton('📱 View Order in Store', MINI_APP_URL)]
         ])
       }
     );
@@ -407,7 +460,7 @@ async function showUserOrders(ctx: any) {
         '📦 You have no past orders yet.',
         Markup.inlineKeyboard([
           [Markup.button.callback('🛍️ Start Shopping', 'cmd_categories')],
-          [Markup.button.webApp('📱 Open Mini App Store', MINI_APP_URL)]
+          [getStoreButton('📱 Open Store', MINI_APP_URL)]
         ])
       );
       return;
@@ -423,7 +476,7 @@ async function showUserOrders(ctx: any) {
       buttons.push([Markup.button.callback(`View ${ord.orderNumber}`, `view_ord_${ord._id}`)]);
     });
 
-    buttons.push([Markup.button.webApp('📱 View Full Hub in Mini App', MINI_APP_URL)]);
+    buttons.push([getStoreButton('📱 View Full Hub in Store', MINI_APP_URL)]);
     buttons.push([Markup.button.callback('🔙 Main Menu', 'cmd_menu')]);
 
     await ctx.replyWithMarkdown(text, Markup.inlineKeyboard(buttons));
@@ -532,7 +585,7 @@ bot.action('cmd_menu', async (ctx) => {
   await ctx.reply(
     '📱 *Main Menu*',
     Markup.inlineKeyboard([
-      [Markup.button.webApp('🛍️ Open Store (Mini App)', MINI_APP_URL)],
+      [getStoreButton('🛍️ Open Store (Mini App)', MINI_APP_URL)],
       [
         Markup.button.callback('📂 Browse Categories', 'cmd_categories'),
         Markup.button.callback('🛒 My Cart', 'cmd_cart')

@@ -1,0 +1,22 @@
+{
+  "name": "@telegram-store/telegram-bot",
+  "version": "1.0.0",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsx watch src/index.ts"
+  },
+  "dependencies": {
+    "@telegram-store/shared": "*",
+    "@telegram-store/types": "*",
+    "axios": "^1.7.2",
+    "dotenv": "^16.4.5",
+    "telegraf": "^4.16.3"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.2",
+    "tsx": "^4.11.0",
+    "typescript": "^5.4.5"
+  }
+}

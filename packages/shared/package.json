@@ -1,0 +1,16 @@
+{
+  "name": "@telegram-store/shared",
+  "version": "1.0.0",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc -w"
+  },
+  "dependencies": {
+    "@telegram-store/types": "*"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.5"
+  }
+}

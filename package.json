@@ -1,0 +1,35 @@
+{
+  "name": "telegram-digital-store-pro",
+  "version": "1.0.0",
+  "description": "Production-oriented Telegram Digital Product E-Commerce Platform with automated KHQR payments and instant digital delivery",
+  "private": true,
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces",
+    "build:packages": "npm run build --workspace=@telegram-store/types && npm run build --workspace=@telegram-store/shared",
+    "build:backend": "npm run build --workspace=@telegram-store/backend",
+    "build:frontend": "npm run build --workspace=@telegram-store/frontend",
+    "build:bot": "npm run build --workspace=@telegram-store/telegram-bot",
+    "start:backend": "npm run start --workspace=@telegram-store/backend",
+    "start:bot": "npm run start --workspace=@telegram-store/telegram-bot",
+    "dev:backend": "npm run dev --workspace=@telegram-store/backend",
+    "dev:frontend": "npm run dev --workspace=@telegram-store/frontend",
+    "dev:bot": "npm run dev --workspace=@telegram-store/telegram-bot",
+    "seed": "npm run seed --workspace=@telegram-store/backend",
+    "test": "npm run test --workspaces"
+  },
+  "keywords": [
+    "telegram-bot",
+    "telegram-mini-app",
+    "khqr",
+    "bakong",
+    "digital-products",
+    "ecommerce",
+    "cambodia-fintech"
+  ],
+  "author": "Telegram Store Pro Team",
+  "license": "MIT"
+}

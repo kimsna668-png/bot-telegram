@@ -1,12 +1,15 @@
 import mongoose, { Schema, Document } from 'mongoose';
-import type { ILicenseKey, LicenseStatus } from '@telegram-store/types';
+import type { ILicenseKey } from '@telegram-store/types';
 
-export interface ILicenseKeyDocument extends Omit<ILicenseKey, '_id'>, Document {}
+export interface ILicenseKeyDocument extends Omit<ILicenseKey, '_id' | 'productId' | 'orderId'>, Document {
+  productId: any;
+  orderId?: any;
+}
 
 const LicenseKeySchema = new Schema<ILicenseKeyDocument>(
   {
-    productId: { type: Schema.Types.ObjectId, ref: 'Product', required: true, index: true },
-    orderId: { type: Schema.Types.ObjectId, ref: 'Order', default: null, index: true },
+    productId: { type: Schema.Types.ObjectId, ref: 'Product', required: true, index: true } as any,
+    orderId: { type: Schema.Types.ObjectId, ref: 'Order', default: null, index: true } as any,
     licenseKey: { type: String, required: true, trim: true },
     status: {
       type: String,

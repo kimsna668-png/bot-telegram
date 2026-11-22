@@ -1,7 +1,10 @@
 import mongoose, { Schema, Document } from 'mongoose';
 import type { IOrder, IOrderItem } from '@telegram-store/types';
 
-export interface IOrderDocument extends Omit<IOrder, '_id'>, Document {}
+export interface IOrderDocument extends Omit<IOrder, '_id' | 'userId' | 'paymentId'>, Document {
+  userId: any;
+  paymentId?: any;
+}
 
 const OrderItemSchema = new Schema<IOrderItem>(
   {
@@ -24,7 +27,7 @@ const OrderItemSchema = new Schema<IOrderItem>(
 const OrderSchema = new Schema<IOrderDocument>(
   {
     orderNumber: { type: String, required: true, unique: true, index: true },
-    userId: { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true },
+    userId: { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true } as any,
     telegramId: { type: Number, required: true, index: true },
     items: [OrderItemSchema],
     currency: { type: String, enum: ['USD', 'KHR'], default: 'USD', required: true },
@@ -44,7 +47,7 @@ const OrderSchema = new Schema<IOrderDocument>(
       default: 'PENDING',
       index: true
     },
-    paymentId: { type: Schema.Types.ObjectId, ref: 'Payment' },
+    paymentId: { type: Schema.Types.ObjectId, ref: 'Payment' } as any,
     notes: { type: String },
     expiresAt: { type: Date, required: true, index: true },
     paidAt: { type: Date },

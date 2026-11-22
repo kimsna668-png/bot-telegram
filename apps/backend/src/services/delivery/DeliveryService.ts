@@ -29,7 +29,7 @@ export class DeliveryService {
     // Check if already delivered
     let delivery = await DeliveryModel.findOne({ orderId: order._id });
     if (delivery && delivery.status === 'COMPLETED') {
-      return delivery.toObject() as IDelivery;
+      return delivery.toObject() as unknown as IDelivery;
     }
 
     if (!delivery) {
@@ -174,7 +174,7 @@ export class DeliveryService {
       order.deliveredAt = new Date();
       await order.save();
 
-      return delivery.toObject() as IDelivery;
+      return delivery.toObject() as unknown as IDelivery;
     } catch (err: any) {
       delivery.status = 'FAILED';
       delivery.lastError = err.message || 'Delivery error';
@@ -185,6 +185,6 @@ export class DeliveryService {
 
   public async getDeliveryByOrder(orderId: string): Promise<IDelivery | null> {
     const delivery = await DeliveryModel.findOne({ orderId });
-    return delivery ? (delivery.toObject() as IDelivery) : null;
+    return delivery ? (delivery.toObject() as unknown as IDelivery) : null;
   }
 }

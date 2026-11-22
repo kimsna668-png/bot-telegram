@@ -1,7 +1,10 @@
 import mongoose, { Schema, Document } from 'mongoose';
-import type { IProduct, ProductType, DeliveryMethod } from '@telegram-store/types';
+import type { IProduct } from '@telegram-store/types';
 
-export interface IProductDocument extends Omit<IProduct, '_id'>, Document {}
+export interface IProductDocument extends Omit<IProduct, '_id' | 'categoryId' | 'digitalAssetId'>, Document {
+  categoryId: any;
+  digitalAssetId?: any;
+}
 
 const ProductSchema = new Schema<IProductDocument>(
   {
@@ -13,7 +16,7 @@ const ProductSchema = new Schema<IProductDocument>(
     priceKHR: { type: Number, required: true, min: 0 },
     discountPriceUSD: { type: Number, min: 0 },
     discountPriceKHR: { type: Number, min: 0 },
-    categoryId: { type: Schema.Types.ObjectId, ref: 'Category', required: true, index: true },
+    categoryId: { type: Schema.Types.ObjectId, ref: 'Category', required: true, index: true } as any,
     images: [{ type: String }],
     productType: {
       type: String,
@@ -41,7 +44,7 @@ const ProductSchema = new Schema<IProductDocument>(
     isActive: { type: Boolean, default: true, index: true },
     salesCount: { type: Number, default: 0 },
     rating: { type: Number, default: 5 },
-    digitalAssetId: { type: Schema.Types.ObjectId, ref: 'DigitalAsset', default: null },
+    digitalAssetId: { type: Schema.Types.ObjectId, ref: 'DigitalAsset', default: null } as any,
     downloadExpiryHours: { type: Number, default: 48 },
     maxDownloadCount: { type: Number, default: 5 },
     metadata: { type: Schema.Types.Mixed, default: {} }

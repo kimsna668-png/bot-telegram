@@ -1,12 +1,14 @@
 import mongoose, { Schema, Document } from 'mongoose';
 import type { IPayment } from '@telegram-store/types';
 
-export interface IPaymentDocument extends Omit<IPayment, '_id'>, Document {}
+export interface IPaymentDocument extends Omit<IPayment, '_id' | 'orderId'>, Document {
+  orderId: any;
+}
 
 const PaymentSchema = new Schema<IPaymentDocument>(
   {
     transactionRef: { type: String, required: true, unique: true, index: true },
-    orderId: { type: Schema.Types.ObjectId, ref: 'Order', required: true, index: true },
+    orderId: { type: Schema.Types.ObjectId, ref: 'Order', required: true, index: true } as any,
     telegramId: { type: Number, required: true, index: true },
     currency: { type: String, enum: ['USD', 'KHR'], required: true },
     amount: { type: Number, required: true },

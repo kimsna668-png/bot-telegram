@@ -1,11 +1,13 @@
 import mongoose, { Schema, Document } from 'mongoose';
 import type { IDigitalAsset } from '@telegram-store/types';
 
-export interface IDigitalAssetDocument extends Omit<IDigitalAsset, '_id'>, Document {}
+export interface IDigitalAssetDocument extends Omit<IDigitalAsset, '_id' | 'productId'>, Document {
+  productId: any;
+}
 
 const DigitalAssetSchema = new Schema<IDigitalAssetDocument>(
   {
-    productId: { type: Schema.Types.ObjectId, ref: 'Product', required: true, index: true },
+    productId: { type: Schema.Types.ObjectId, ref: 'Product', required: true, index: true } as any,
     title: { type: String, required: true, trim: true },
     assetType: {
       type: String,

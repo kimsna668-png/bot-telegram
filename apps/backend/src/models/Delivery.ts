@@ -1,11 +1,13 @@
 import mongoose, { Schema, Document } from 'mongoose';
 import type { IDelivery } from '@telegram-store/types';
 
-export interface IDeliveryDocument extends Omit<IDelivery, '_id'>, Document {}
+export interface IDeliveryDocument extends Omit<IDelivery, '_id' | 'orderId'>, Document {
+  orderId: any;
+}
 
 const DeliverySchema = new Schema<IDeliveryDocument>(
   {
-    orderId: { type: Schema.Types.ObjectId, ref: 'Order', required: true, index: true },
+    orderId: { type: Schema.Types.ObjectId, ref: 'Order', required: true, index: true } as any,
     orderNumber: { type: String, required: true },
     telegramId: { type: Number, required: true, index: true },
     status: {

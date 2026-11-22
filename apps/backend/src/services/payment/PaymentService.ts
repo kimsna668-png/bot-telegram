@@ -251,7 +251,7 @@ export class PaymentService {
         }
 
         // Send instant notification to Telegram Customer
-        TelegramNotificationService.getInstance().notifyCustomerPaymentSuccess(order, deliveryResult);
+        TelegramNotificationService.getInstance().notifyCustomerPaymentSuccess(order.toObject() as any, deliveryResult);
       }
     }
 

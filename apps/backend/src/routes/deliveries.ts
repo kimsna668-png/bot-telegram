@@ -97,7 +97,7 @@ router.post('/resend/:orderId', async (req: Request, res: Response): Promise<voi
       return;
     }
 
-    const sent = await TelegramNotificationService.getInstance().notifyCustomerPaymentSuccess(order, delivery.toObject() as any);
+    const sent = await TelegramNotificationService.getInstance().notifyCustomerPaymentSuccess(order.toObject() as any, delivery.toObject() as any);
 
     res.json({
       success: sent,
